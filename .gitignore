@@ -215,4 +215,10 @@ pip-log.txt
 .mr.developer.cfg
 
 #virutalenv
-env
+env/
+
+
+#############
+## Project
+#############
+data/

@@ -1,9 +1,12 @@
 """Fetches card prices from mtggoldfish"""
 import csv
+import time
 import requests
 from bs4 import BeautifulSoup
 
-PRICING_URL = 'http://www.mtggoldfish.com/tools/deck_pricer#paper'
+PRICING_URL = 'http://www.mtggoldfish.com/tools/deck_pricer'
+MAX_CARD_LIST_SIZE = 100
+SLEEP_TIME = 30
 
 def submit_card_list(card_list):
     """Sends cards to website"""
@@ -64,14 +67,50 @@ def parse_card_html(row_el, card_name_el, type_name):
 def write_card_data(card_data, file_name):
     """Write the elements of card_data as rows in a csv to file_name"""
     with open(file_name, 'w') as csvfile:
-        card_data_writer = csv.writer(csvfile)
+        card_data_writer = csv.writer(csvfile, lineterminator='\n')
         for row in card_data:
             card_data_writer.writerow(row)
 
+def split_card_list(card_list):
+    """
+    Lookup a list of card by splitting into smaller chunks and
+    waiting between them.
+    """
+    card_list_copy = list(card_list)
+    card_data = list()
+    first = True
+    counter = 0
+    while card_list_copy:
+        if first:
+            first = False
+        else:
+            time.sleep(SLEEP_TIME)
+
+        small_card_list = list()
+        while len(small_card_list) < MAX_CARD_LIST_SIZE and card_list_copy:
+            small_card_list.append(card_list_copy.pop(0))
+        print("Sending {} cards.".format(len(small_card_list)))
+        response = submit_card_list(small_card_list)
+        small_card_data = parse_html(response.text)
+        print("Got back data for {} cards.".format(len(small_card_data)))
+        if len(small_card_list) != len(small_card_data):
+            file_name = "parse_error_" + counter + ".html"
+            print("Saving response that caused error to {}.".format(file_name))
+            try:
+                with open(file_name, 'w') as parse_error_file:
+                    parse_error_file.write(response.text)
+            except UnicodeEncodeError:
+                with open(file_name, 'w') as parse_error_file:
+                    parse_error_file.write(response.text.encode('utf-8', 'ignore').decode('utf-8'))
+        csv_file_name = "combined_csv_file_{}.csv".format(counter)
+        counter += 1
+        write_card_data(small_card_data, csv_file_name)
+        card_data.extend(small_card_data)
+    return card_data
+
 def save_card_prices(card_list, file_name):
     """Look up card list and save all prices to a csv at file_name"""
-    response = submit_card_list(card_list)
-    card_data = parse_html(response.text)
+    card_data = split_card_list(card_list)
     write_card_data(card_data, file_name)
 
 def run_script():
